@@ -12,8 +12,8 @@ class Point:
         y : float
         """
         __slots__ = ["x", "y"]
-        self.x = x
-        self.y = y
+        self.x: float = x
+        self.y: float = y
         
     @property
     def intx(self) -> int:
@@ -42,7 +42,7 @@ class Point:
         return (int(self.x), int(self.y))
     
     def __str__(self) -> str:
-        return f'{self.__name__}({self.x:.2f}, {self.y:.2f})'
+        return f'{self.__class__.__name__}({self.x:.2f}, {self.y:.2f})'
     
 
 class RotatedRect:
@@ -79,7 +79,7 @@ class RotatedRect:
         """Returns coordinates of corners of a rotated rectangle
 
         Returns:
-            np.array (Point, Point, Point, Point): list of 4 corners
+            list (Point, Point, Point, Point): list of 4 corners
         """
         #  D                       C
         #   *---------------------* 
@@ -126,7 +126,7 @@ class RotatedRect:
         D_prime: Point = Point(tmp_D_prime[0][0], tmp_D_prime[1][0])
         del D, tmp_D, tmp_D_prime
     
-        return np.array([A_prime.tupleint(), B_prime.tupleint(), C_prime.tupleint(), D_prime.tupleint()])
+        return np.array([A_prime.listint(), B_prime.listint(), C_prime.listint(), D_prime.listint()], dtype=np.int32)
 
     
     def get_depthai_RotatedRect(self) -> dai.RotatedRect:
@@ -146,3 +146,5 @@ class RotatedRect:
         """Retrieve cv2.RotatedRect"""
         return cv2.RotatedRect(self.centre.listint(), [2 * self.halfwidth, 2 * self.halfheight],  np.rad2deg(self.angle))
     
+    def __str__(self) -> str:
+        return f'RotatedRect(centre={self.centre}, width={2*self.halfwidth}, height={2*self.halfheight} angle={self.angle})'

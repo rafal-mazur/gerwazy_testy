@@ -22,6 +22,12 @@ def create_pipeline() -> dai.Pipeline:
     detection_nn = pipeline.create(dai.node.NeuralNetwork)
     detection_nn_output_xout = pipeline.create(dai.node.XLinkOut)
     detection_nn_passthrough_xout = pipeline.create(dai.node.XLinkOut)
+    
+    imgmanip = pipeline.create(dai.node.ImageManip)
+    imgmanip_input_image = pipeline.create(dai.node.XLinkIn)
+    imgmanip_input_cfg = pipeline.create(dai.node.XLinkIn)
+    
+    imgmanip_debug_xout = pipeline.create(dai.node.XLinkOut)
 
     # ------------------------------------------------------------------------
     # TODO: recognition part
@@ -48,6 +54,12 @@ def create_pipeline() -> dai.Pipeline:
     detection_nn.setBlobPath(settings.BlobPaths.DETECTION_NETWORK)
     detection_nn_output_xout.setStreamName('detNN_output')
     detection_nn_passthrough_xout.setStreamName('detNN_passthrough')
+    
+    imgmanip.setWaitForConfigInput(True)
+    imgmanip_input_image.setStreamName('imgmanip_img')
+    imgmanip_input_cfg.setStreamName('imgmanip_cfg')
+
+    imgmanip_debug_xout.setStreamName('imgmanip_debug')
 
 	# ...
 
@@ -61,6 +73,11 @@ def create_pipeline() -> dai.Pipeline:
 
     detection_nn.passthrough.link(detection_nn_passthrough_xout.input)
     detection_nn.out.link(detection_nn_output_xout.input)
+    
+    imgmanip_input_image.out.link(imgmanip.inputImage)
+    imgmanip_input_cfg.out.link(imgmanip.inputConfig)
+    
+    imgmanip.out.link(imgmanip_debug_xout.input)
     
 	# ...
 

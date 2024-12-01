@@ -19,7 +19,7 @@ def decode_east(east_output: dai.NNData):
 
     Returns
     -------
-    list[tuple[RotatedRect, float]]
+    Generator[list[tuple[RotatedRect, float]]]
         List od pairs consisting of bouding box and its score
     """
     # scores.shape =      (1, 1, 64, 64)
@@ -28,9 +28,9 @@ def decode_east(east_output: dai.NNData):
    
     east_output_tensor = to_tensor_result(east_output)
     
-    scores: np.array = np.reshape(east_output_tensor['feature_fusion/Conv_7/Sigmoid'][0, 0], (64, 64)) # confidences
-    bboxes_data: np.array = np.reshape(east_output_tensor['feature_fusion/mul_6'][0], (4, 64, 64)) # rectangular bounding boxes
-    angles_data: np.array = np.reshape(east_output_tensor['feature_fusion/sub/Fused_Add_'][0, 0], (64, 64)) # angles to rotate boxes by
+    scores: np.array = np.reshape(east_output_tensor['feature_fusion/Conv_7/Sigmoid'], (1, 1, 64, 64))[0, 0] # confidences
+    bboxes_data: np.array = np.reshape(east_output_tensor['feature_fusion/mul_6'], (1, 4, 64, 64))[0] # rectangular bounding boxes
+    angles_data: np.array = np.reshape(east_output_tensor['feature_fusion/sub/Fused_Add_'], (1, 1, 64, 64))[0, 0] # angles to rotate boxes by
     
     # dimensions of a feature map
     (numRows, numCols) = scores.shape
@@ -73,19 +73,23 @@ def decode_east(east_output: dai.NNData):
             angles.append(angle)
             confidences.append(scores_row[x])
         
-        # apply non max supression and yield the results
-        for bbox, angle, conf in non_max_suppression(np.ndarray(bboxes), np.ndarray(confidences), np.ndarray(angles)):
-            yield (RotatedRect(Point(bbox[0], bbox[1]), Point(bbox[2], bbox[3]), angle), conf)
-
+    bboxes = np.array(bboxes)
+    confidences = np.array(confidences)
+    angles = np.array(angles)
+    
+    # apply non max supression and yield the results
+    bboxes, confidences, angles = non_max_suppression(np.array(bboxes), np.array(confidences), np.array(angles))
+    for bbox, score, angle in zip(bboxes, confidences, angles):
+        yield (RotatedRect((Point(bbox[0], bbox[1]), Point(bbox[2], bbox[3])), angle), score)
 
 
 def to_tensor_result(packet: dai.NNData) -> dict:
     return {tensor.name: np.array(packet.getLayerFp16(tensor.name)) for tensor in packet.getRaw().tensors}
 
 
-def non_max_suppression(boxes: np.ndarray[float, float, float, float], 
-                        scores: np.ndarray[float], 
-                        angles: np.ndarray[float] | None = None) -> tuple[np.ndarray, np.ndarray, np.ndarray] | tuple[np.ndarray, np.ndarray]:
+def non_max_suppression(boxes: np.ndarray, 
+                        scores: np.ndarray, 
+                        angles: np.ndarray | None = None) -> tuple[np.array, np.array, np.array]:
     """Apply non max supression to given data
 
     Parameters
@@ -99,12 +103,13 @@ def non_max_suppression(boxes: np.ndarray[float, float, float, float],
 
     Returns
     -------
-    tuple[np.ndarray, np.ndarray, np.ndarray] | tuple[np.ndarray, np.ndarray]
-        Filtered ``(boxes, scores, angles)`` if ``angles`` is not None, ``(boxes, scores)`` otherwise 
+    np.array
+        Filtered ``(boxes, scores, angles)`` tuples
+        if ``angles`` is None then ``angles`` is an array of zeros
     """
     # if there are no boxes, return an empty list
     if len(boxes) == 0:
-        return [], []
+        return np.array([], dtype=float), np.array([], dtype=float), np.array([], dtype=float)
 
     if boxes.dtype.kind == "i":
         boxes = boxes.astype("float")
@@ -131,23 +136,26 @@ def non_max_suppression(boxes: np.ndarray[float, float, float, float],
         picked.append(i)
 
         # find the largest (x, y) coordinates for the start of the bounding box and the smallest (x, y) coordinates for the end of the bounding box
-        xx1 = np.maximum(x1[i], x1[order_but_last])
-        yy1 = np.maximum(y1[i], y1[order_but_last])
-        xx2 = np.minimum(x2[i], x2[order_but_last])
-        yy2 = np.minimum(y2[i], y2[order_but_last])
+        xx1 = np.maximum(x1[i], x1[order[:-1]])
+        yy1 = np.maximum(y1[i], y1[order[:-1]])
+        xx2 = np.minimum(x2[i], x2[order[:-1]])
+        yy2 = np.minimum(y2[i], y2[order[:-1]])
 
         # compute the width and height of the bounding box
         w = np.maximum(0, xx2 - xx1)
         h = np.maximum(0, yy2 - yy1)
 
         # compute the ratio of overlap
-        overlap = (w * h) / areas[order_but_last]
+        overlap = (w * h) / areas[order[:-1]]
 
         # delete all indexes from the index list that have overlap greater than the provided overlap threshold
-        order = np.delete(order, np.concatenate(([len(order_but_last)], np.where(overlap > _overlap_thresh)[0])))
+        order = np.delete(order, np.concatenate(([len(order) - 1], np.where(overlap > _overlap_thresh)[0])))
 
     # return only the bounding boxes that were picked
-    return boxes[picked], scores[picked] if angles is None else boxes[picked], scores[picked], angles[picked]
+    if angles is None:
+        angles = [0. for _ in range(boxes.shape[0])]  
+    
+    return np.array(boxes[picked]), np.array(scores[picked]), np.array(angles[picked])
 
 
 def order_points(pts):
